@@ -1,100 +1,70 @@
-# -*- coding: utf-8 -*-
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import argparse
-import sys
+# Font bitmap generator by John. 20170303
+# Remember to add __future__ module later
+# -*- coding: UTF-8 -*-
+from PIL import ImageFont, ImageDraw, Image
 import numpy as np
-import os
-from PIL import Image
-from PIL import ImageDraw
-from PIL import ImageFont
-from utils import render_fonts_image
+import argparse, os
 
-reload(sys)
-sys.setdefaultencoding("utf-8")
+# Character size and canvas size.
+char_s, canv_s, x, y = 64, 80, 0, 0
 
-FLAGS = None
+""" Check if characters set has been imported successfully. """
+import sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# print(kanji[:10])
 
-
-def draw_char_bitmap(ch, font, char_size, x_offset, y_offset):
-    image = Image.new("RGB", (char_size, char_size), (255, 255, 255))
-    draw = ImageDraw.Draw(image)
-    draw.text((x_offset, y_offset), ch, (0, 0, 0), font=font)
-    gray = image.convert('L')
-    bitmap = np.asarray(gray)
-    return bitmap
-
-
-def generate_font_bitmaps(chars, font_path, char_size, canvas_size, x_offset, y_offset):
-    font_obj = ImageFont.truetype(font_path, char_size)
-    bitmaps = list()
-    for c in chars:
-        bm = draw_char_bitmap(c, font_obj, canvas_size, x_offset, y_offset)
-        bitmaps.append(bm)
-    return np.array(bitmaps)
-
-
-def process_font(chars, font_path, save_dir, x_offset=0, y_offset=0, mode='target'):
-    char_size = 64
-    canvas = 80
-    if mode == 'source':
-        char_size *= 2
-        canvas *= 2
-    font_bitmaps = generate_font_bitmaps(chars, font_path, char_size,
-                                         canvas, x_offset, y_offset)
-    _, ext = os.path.splitext(font_path)
-    if not ext.lower() in [".otf", ".ttf"]:
-        raise RuntimeError("unknown font type found %s. only TrueType or OpenType is supported" % ext)
-    _, tail = os.path.split(font_path)
-    font_name = ".".join(tail.split(".")[:-1])
-    bitmap_path = os.path.join(save_dir, "%s.npy" % font_name)
-    np.save(bitmap_path, font_bitmaps)
-    sample_image_path = os.path.join(save_dir, "%s_sample.png" % font_name)
-    render_fonts_image(font_bitmaps[:100], sample_image_path, 10, False)
-    print("%s font %s saved at %s" % (mode, font_name, bitmap_path))
-
-
-def get_chars_set(path):
-    """
-    Expect a text file that each line is a char
-    """
-    chars = list()
-    with open(path) as f:
-        for line in f:
-            line = u"%s" % line
-            char = line.split()[0]
-            chars.append(char)
-    return chars
-
+# Main function.
+def ttf_to_bmp(kanji, font, char_size, canv_size, position_x, position_y):
+    font_obj = ImageFont.truetype(font, char_size)
+    bmp = list()
+    i = 0
+    for character in kanji:
+        i += 1      
+        # Create canvas and draw kanji on it.
+        img = Image.new('L', (canv_size, canv_size), color=255)
+        draw = ImageDraw.Draw(img) 
+        tile = draw.text((position_x, position_y), character, font = font_obj, fill=0)
+        # Convert IMAGE data into numpy array.
+        bmp.append(np.asarray(img))
+        img.close()
+        del draw
+    bmp = np.asarray(bmp)
+    return bmp
 
 if __name__ == "__main__":
+    # Use argparser to define arguments necessary for this program.
     parser = argparse.ArgumentParser()
-    parser.add_argument('--source_font', type=str, default=None,
-                        help='npy bitmap for the source font')
-    parser.add_argument('--target_font', type=str, default=None,
-                        help='npy bitmap for the target font')
-    parser.add_argument('--char_list', type=str, required=True,
-                        help='source file for chars. each line contains one char')
-    parser.add_argument('--save_dir', type=str, required=True,
-                        help='directory to save output')
-    parser.add_argument('--sx', type=int, default=0,
-                        help='source font x offset')
-    parser.add_argument('--sy', type=int, default=0,
-                        help='source font y offset')
-    parser.add_argument('--tx', type=int, default=0,
-                        help='target font x offset')
-    parser.add_argument('--ty', type=int, default=0,
-                        help='target font y offset')
-    FLAGS = parser.parse_args()
-
-    if not os.path.exists(FLAGS.save_dir):
-        os.makedirs(FLAGS.save_dir)
-
-    chars = get_chars_set(FLAGS.char_list)
-    if FLAGS.source_font:
-        process_font(chars, FLAGS.source_font, FLAGS.save_dir, FLAGS.sx, FLAGS.sy, mode='source')
-    if FLAGS.target_font:
-        process_font(chars, FLAGS.target_font, FLAGS.save_dir, FLAGS.tx, FLAGS.ty, mode='target')
+    parser.add_argument("--sourcefont", type=str, default=None,
+                        help="Your source font file location.")
+    parser.add_argument("--targetfont", type=str, default=None,
+                        help="Your target font file location.")
+    parser.add_argument("--saveto", type=str, default="font_array",
+                        help="Directory to save converted font data.")
+    parser.add_argument("--kanji", type=str, default=None,
+                        help="Chinese characters set to apply calligraphy style.") 
+    # Parse inputs into arguments and start processing.                             
+    ARG = parser.parse_args()
+    kanji = open(ARG.kanji, 'r', encoding='UTF-8').read()
+    kanji = [x for x in kanji if x != '\n']
+    if "sample_img" not in os.listdir(os.getcwd()):
+        os.mkdir("sample_img")
+    if ARG.saveto not in os.listdir(os.getcwd()):
+        os.makedirs("font_array")
+    if ARG.sourcefont:
+        bmp = None
+        bmp = ttf_to_bmp(kanji, ARG.sourcefont, char_s, canv_s, x, y)
+        filename = os.path.join(ARG.saveto, "sourcefont.npy")
+        print(bmp)
+        print(bmp[0])
+        print(bmp[0][0])
+        np.save(filename, bmp)
+        img = Image.fromarray(np.append([x for x in bmp[:100]], axis=1), 'RGB')
+        img.save('sample_img/source.png')
+    if ARG.targetfont:
+        bmp = None   
+        bmp = ttf_to_bmp(kanji, ARG.targetfont, char_s, canv_s, x, y)
+        filename = os.path.join(ARG.saveto, "targetfont.npy")
+        np.save(filename, bmp)
+        img = Image.fromarray(bmp, 'RGB')
+        img.save('sample_img/target.png')
